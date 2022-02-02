@@ -5,6 +5,9 @@
 .httr-oauth
 .DS_Store
 
+# Generated CSVs
+inputs/data/
+
 # History files
 .Rhistory
 .Rapp.history
