@@ -2,9 +2,8 @@
 title: "My title"
 subtitle: "My subtitle if needed"
 author: 
-  - First author
-  - Another author
-thanks: "Code and data are available at: LINK."
+  - Roy Chan
+thanks: "Code and data are available at: https://github.com/chan-roy/sta304_paper1"
 date: "`r format(Sys.time(), '%d %B %Y')`"
 abstract: "First sentence. Second sentence. Third sentence. Fourth sentence."
 output:
@@ -16,8 +15,9 @@ bibliography: references.bib
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
+library(ggplot2)
+library(dplyr)
 library(tidyverse)
-library(palmerpenguins)
 ```
 
 # Introduction
@@ -28,32 +28,23 @@ You can and should cross-reference sections and sub-sections. For instance, Sect
 
 # Data
 
-Our data is of penguins (Figure \@ref(fig:bills)).
+As part of the City of Toronto's Vision Zero Road Safety Plan, the Mobile Watch Your Speed Program uses speed display signs which contain a radar device to detect the speeds of oncoming vehicles and an LED display to show the speed of the vehicle to the driver. The aim of the device is to "remind [motorists] to check their speeds and to obey speed limits" [@citeWYSP]. We note that this program is distinct from automated speed enforcement
 
-```{r bills, fig.cap="Bills of penguins", echo = FALSE}
-ggplot(penguins, aes(x = island, fill = species)) +
-  geom_bar(alpha = 0.8) +
-  scale_fill_manual(values = c("darkorange","purple","cyan4"),
-                    guide = FALSE) +
-  theme_minimal() +
-  facet_wrap(~species, ncol = 1) +
-  coord_flip()
+## TODO ADD CITATIONS
+Our data is a summary of speeds recorded by the speed display signs. The data is obtained from (CITATION). The dataset as retrieved from `opendatatoronto` consists of 6517 rows each corresponding to an installation of the display, with columns indicating the location, period of installation, and a summary of speed observations made over the period of time it was installed. All displays are scheduled to only on weekdays between the hours of 7 AM to 9 PM. For each, we have speed distributed by percentiles, as well as the total count of vehicles recorded travelling at a specific speed in 5 km/h increments.
+
+```{r data, fig.cap="Preview of data", echo = FALSE, message = FALSE}
+speed_data <- read_csv(here::here("inputs/data/speed_data.csv"))
+print(as_tibble(speed_data), n = 3)
 ```
 
-Talk more about it.
+Given the dimensions of our dataset, we want to split the data by using `dplyr`
 
-Also bills and their average (Figure \@ref(fig:billssssss)). (Notice how you can change the height and width so they don't take the whole page?)
-
-```{r billssssss, fig.cap="More bills of penguins", echo = FALSE, fig.width=8, fig.height=4}
-
-# This needs to be about the random data tha tI sasmpled?
-ggplot(penguins, aes(x = island, fill = species)) +
-  geom_bar(alpha = 0.8) +
-  scale_fill_manual(values = c("darkorange","purple","cyan4"),
-                    guide = FALSE) +
-  theme_minimal() +
-  facet_wrap(~species, ncol = 1) +
-  coord_flip()
+```{r histograms, fig.cap="More bills of penguins", echo = FALSE, fig.width=8, fig.height=4}
+# drop column schedule as all displays operate on same schedule
+locations <- speed_data %>% select(c('_id':removal_date, min_speed))
+percentile_speeds <- left_join(locations, select(speed_data, c('_id', starts_with('pct_'))))
+speed_counts <- left_join(locations, select(speed_data, c('_id', starts_with('spd_'))))
 ```
 
 Talk way more about it. 
