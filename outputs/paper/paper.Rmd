@@ -13,10 +13,7 @@ bibliography: references.bib
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-
-library(ggplot2)
-library(dplyr)
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
 library(tidyverse)
 ```
 
@@ -28,26 +25,47 @@ You can and should cross-reference sections and sub-sections. For instance, Sect
 
 # Data
 
-As part of the City of Toronto's Vision Zero Road Safety Plan, the Mobile Watch Your Speed Program uses speed display signs which contain a radar device to detect the speeds of oncoming vehicles and an LED display to show the speed of the vehicle to the driver. The aim of the device is to "remind [motorists] to check their speeds and to obey speed limits" [@citeWYSP]. We note that this program is distinct from automated speed enforcement
+As part of the City of Toronto's Vision Zero Road Safety Plan, the Mobile Watch Your Speed Program uses speed display signs which contain a radar device to detect the speeds of oncoming vehicles and an LED display to show the speed of the vehicle to the driver. The aim of the device is to "remind [motorists] to check their speeds and to obey speed limits" [@citeWYSP]. We note that this program is distinct from automated speed enforcement.
 
 ## TODO ADD CITATIONS
-Our data is a summary of speeds recorded by the speed display signs. The data is obtained from (CITATION). The dataset as retrieved from `opendatatoronto` consists of 6517 rows each corresponding to an installation of the display, with columns indicating the location, period of installation, and a summary of speed observations made over the period of time it was installed. All displays are scheduled to only on weekdays between the hours of 7 AM to 9 PM. For each, we have speed distributed by percentiles, as well as the total count of vehicles recorded travelling at a specific speed in 5 km/h increments.
+Our data is a summary of speeds recorded by the speed display signs. The data is obtained from (CITATION). The dataset as retrieved from `opendatatoronto` consists of 6517 rows each corresponding to an installation of the display, with columns indicating the location, period of installation, and a summary of speed observations made over the period of time it was installed. All displays are scheduled to be on only on weekdays between the hours of 7 AM to 9 PM, but speeds are still recorded by the device. For each row, we have speed distributed by percentiles, as well as the total count of vehicles recorded travelling at a specific speed in bins of 5 km/h increments from 0 to 100 and over.
 
 ```{r data, fig.cap="Preview of data", echo = FALSE, message = FALSE}
 speed_data <- read_csv(here::here("inputs/data/speed_data.csv"))
 print(as_tibble(speed_data), n = 3)
 ```
 
-Given the dimensions of our dataset, we want to split the data by using `dplyr`
+- It would be very difficult to operate on all 6000 observations, so devise an appropriate method of summarisation
+- We note that the city rotates displays throughout each ward thus will investigate vehicle speed observations on a per ward basis
 
-```{r histograms, fig.cap="More bills of penguins", echo = FALSE, fig.width=8, fig.height=4}
+## Data issues
+- Inconsistent operating period. City site specifies 2-3 weeks, but some cameras have operated for months if not years
+- Criteria of how locations where displays are deployed are unknown (online form for requests)
+- Speed limit of road is not specified. As stated by the City of Toronto (https://www.toronto.ca/311/knowledgebase/kb/docs/articles/transportation-services/district-transportation-services/traffic-operations/minimum-speed-limit-on-streets.html) the default speed limit is 50 km/h unless otherwise posted; thus we will use this as a consideration of whether we consider a vehicle to be speeding. 
+
+Some displays are located on roads which are more busy than others. Thus we will plot a graph of the density of speeds recorded in each ward.
+
+```{r histograms, fig.cap="Histogram of vehicle speed distributions", echo = FALSE}
 # drop column schedule as all displays operate on same schedule
 locations <- speed_data %>% select(c('_id':removal_date, min_speed))
-percentile_speeds <- left_join(locations, select(speed_data, c('_id', starts_with('pct_'))))
-speed_counts <- left_join(locations, select(speed_data, c('_id', starts_with('spd_'))))
-```
+speed_counts <- left_join(locations, select(speed_data, c('_id', starts_with('spd_'), -spd_00)))
 
-Talk way more about it. 
+# convert speed_counts to long format 
+speed_counts <- speed_counts %>% gather("speed", "count", starts_with('spd_')) %>% 
+  mutate(speed = str_remove_all(speed, "spd_")) %>%
+  mutate(speed = str_remove_all(speed, "_.*")) %>%
+  transform(speed = as.numeric(speed)) %>%
+  group_by(ward_no, speed) %>% summarise(count = sum(count))
+
+speed_density <- speed_counts %>% summarise(speed, density = count / sum(count))
+
+ggplot(speed_density, aes(x = speed, y = density, color = as.factor(ward_no), group = ward_no)) + 
+  geom_freqpoly(stat = 'identity', position = 'identity') +
+  scale_x_continuous(breaks = seq(5, 100, 5)) +
+  labs(title = 'Frequency polygons of vehicle speed observations per ward', x = 'Recorded speed (km/h)', y = 'Density', color = 'Ward') +
+  theme(text = element_text(size = 10), plot.title = element_text(face = 'bold'), legend.key.size = unit(0.25, 'cm'))
+```
+Some immediate observations that we can make from this histogram are that it is right-skewed, which indicates a trend of speed limit compliance with  our assumption that the speed limit is 50 km/h. 
 
 
 

@@ -21,3 +21,9 @@ speed_data <- filter(datastore_resources, row_number()==1) %>% get_resource()
 
 # write to csv
 write_csv(speed_data, "inputs/data/speed_data.csv")
+
+# use same methods to get Toronto municipal word data, includes geometry so we can plot maps later
+resources_2 <- list_package_resources("5e7a8234-f805-43ac-820f-03d7c360b588")
+datastore_resources_2 <- filter(resources_2, tolower(format) %in% c('csv', 'geojson'))
+wards <- filter(datastore_resources_2, row_number()==1) %>% get_resource()
+write_csv(wards, "inputs/data/wards.csv")
