@@ -1,5 +1,5 @@
 ---
-title: "My title"
+title: "Speed limit compliance in Toronto is high, but speeding is prevalent outside of downtown"
 subtitle: "My subtitle if needed"
 author: 
   - Roy Chan
@@ -13,39 +13,38 @@ bibliography: references.bib
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 library(tidyverse)
+library(sf)
 ```
 
 # Introduction
 
-You can and should cross-reference sections and sub-sections. For instance, Section \@ref(data). R Markdown automatically makes the sections lower case and adds a dash to spaces to generate labels, for instance, Section \@ref(first-discussion-point). 
-
-
-
 # Data
-
-As part of the City of Toronto's Vision Zero Road Safety Plan, the Mobile Watch Your Speed Program uses speed display signs which contain a radar device to detect the speeds of oncoming vehicles and an LED display to show the speed of the vehicle to the driver. The aim of the device is to "remind [motorists] to check their speeds and to obey speed limits" [@citeWYSP]. We note that this program is distinct from automated speed enforcement.
-
 ## TODO ADD CITATIONS
-Our data is a summary of speeds recorded by the speed display signs. The data is obtained from (CITATION). The dataset as retrieved from `opendatatoronto` consists of 6517 rows each corresponding to an installation of the display, with columns indicating the location, period of installation, and a summary of speed observations made over the period of time it was installed. All displays are scheduled to be on only on weekdays between the hours of 7 AM to 9 PM, but speeds are still recorded by the device. For each row, we have speed distributed by percentiles, as well as the total count of vehicles recorded travelling at a specific speed in bins of 5 km/h increments from 0 to 100 and over.
+As part of the City of Toronto's Vision Zero Road Safety Plan, the Mobile Watch Your Speed Program uses speed display signs which contain a radar device to detect the speeds of oncoming vehicles and an LED display to show the speed of the vehicle to the driver. The aim of the device is to "remind [motorists] to check their speeds and to obey speed limits" [@citeWYSP]. The location of the speed displays is limited to residential roads with no more than two lanes, and as they are temporary installations, require existing infrastructure such as hydro or light poles to be affixed to. This program is distinct from automated speed enforcement; there is no consequence if a vehicle is recorded speeding.
+
+Our primary dataset is the Mobile Watch Your Speed Program - Summary (https://open.toronto.ca/dataset/mobile-watch-your-speed-program-speed-summary/). The data is obtained from the Open Data Toronto portal, retrieved using the `opendatatoronto` package [@citeODT]. The dataset is a summary of speeds recorded by these speed display signs over the period when it was installed and operating. It consists of 6517 rows each corresponding to an installation of the display, with columns indicating the location, period of installation, and a summary of speed observations made over the period of time it was installed. All displays are scheduled to be on only on weekdays between the hours of 7 AM to 9 PM and only turns on at a minimum detected speed of 20 km/h, but speeds are still recorded by the device. For each row, we have speed distributed by percentiles, as well as the total count of vehicles recorded travelling at a specific speed in bins of 5 km/h increments from 0 km/h to 100 km/h and over.
 
 ```{r data, fig.cap="Preview of data", echo = FALSE, message = FALSE}
 speed_data <- read_csv(here::here("inputs/data/speed_data.csv"))
 print(as_tibble(speed_data), n = 3)
 ```
 
-- It would be very difficult to operate on all 6000 observations, so devise an appropriate method of summarisation
-- We note that the city rotates displays throughout each ward thus will investigate vehicle speed observations on a per ward basis
+## Data considerations and issues
+We recognise that it would be very difficult to operate on all 6000 observations, so we should devise an appropriate method of summarisation. Since the data spans over the years of 2018-2021, one way is to focus on investigating trends in vehicle speeds over the time the program is operational. Additionally, we note that it is stated the city rotates displays throughout each ward; thus we can also organise the data further by ward. We will use `dplyr` [@citedplyr] to perform our data manipulations. 
 
-## Data issues
-- Inconsistent operating period. City site specifies 2-3 weeks, but some cameras have operated for months if not years
+Some issues that were discovered with the data are:
+- Inconsistent operating period. City site specifies 2-3 weeks, but some cameras have operated for multiple months if not years
 - Criteria of how locations where displays are deployed are unknown (online form for requests)
-- Speed limit of road is not specified. As stated by the City of Toronto (https://www.toronto.ca/311/knowledgebase/kb/docs/articles/transportation-services/district-transportation-services/traffic-operations/minimum-speed-limit-on-streets.html) the default speed limit is 50 km/h unless otherwise posted; thus we will use this as a consideration of whether we consider a vehicle to be speeding. 
+- Speed limit of road where display is located is not specified. As stated by the city of Toronto (https://www.toronto.ca/311/knowledgebase/kb/docs/articles/transportation-services/district-transportation-services/traffic-operations/minimum-speed-limit-on-streets.html) the default speed limit is 50 km/h unless otherwise posted
+- However, the WYSP program operates on residential/local streets, so we use 40km/h as the assumed speed limit.
 
-Some displays are located on roads which are more busy than others. Thus we will plot a graph of the density of speeds recorded in each ward.
+Some displays are located on roads which are more busy than others, so to account for this we will use relative counts. The first exploratory plot we generate, using `ggplot2` [@citeggplot], is the distribution of vehicle speeds in the entire city, grouped by year.
 
 ```{r histograms, fig.cap="Histogram of vehicle speed distributions", echo = FALSE}
+# truncate removal date to year, for grouping
+speed_data$removal_date <- str_sub(speed_data$removal_date, end = 4)
 # drop column schedule as all displays operate on same schedule
 locations <- speed_data %>% select(c('_id':removal_date, min_speed))
 speed_counts <- left_join(locations, select(speed_data, c('_id', starts_with('spd_'), -spd_00)))
@@ -55,34 +54,88 @@ speed_counts <- speed_counts %>% gather("speed", "count", starts_with('spd_')) %
   mutate(speed = str_remove_all(speed, "spd_")) %>%
   mutate(speed = str_remove_all(speed, "_.*")) %>%
   transform(speed = as.numeric(speed)) %>%
-  group_by(ward_no, speed) %>% summarise(count = sum(count))
+  group_by(ward_no, speed, removal_date) %>% 
+  summarise(count = sum(count)) %>%
+  ungroup()
 
-speed_density <- speed_counts %>% summarise(speed, density = count / sum(count))
+speed_yearly <- speed_counts %>% 
+  group_by(removal_date, speed) %>% 
+  summarise(count = sum(count)) %>% 
+  summarise(speed, density = count / sum(count))
 
-ggplot(speed_density, aes(x = speed, y = density, color = as.factor(ward_no), group = ward_no)) + 
+ward_average_speeds <- speed_counts %>% 
+  group_by(ward_no,removal_date) %>% 
+  summarise(speed = (sum(speed * count) / sum(count)))
+
+ggplot(speed_yearly, aes(x = speed, y = density, color = removal_date)) + 
   geom_freqpoly(stat = 'identity', position = 'identity') +
   scale_x_continuous(breaks = seq(5, 100, 5)) +
-  labs(title = 'Frequency polygons of vehicle speed observations per ward', x = 'Recorded speed (km/h)', y = 'Density', color = 'Ward') +
+  labs(title = 'Vehicle speed observations by year', x = 'Recorded speed (km/h)', y = 'Density', color = 'Year') +
   theme(text = element_text(size = 10), plot.title = element_text(face = 'bold'), legend.key.size = unit(0.25, 'cm'))
 ```
-Some immediate observations that we can make from this histogram are that it is right-skewed, which indicates a trend of speed limit compliance with  our assumption that the speed limit is 50 km/h. 
 
+Some immediate observations that we can make from this histogram are that it is right-skewed, which indicates a trend of speed limit compliance with our assumption that the speed limit is 40 km/h. It is also very consistent from year to year, so there does not appear to be any significant changes in driving behaviour. One feature of our dataset is that it contains information about the municipal ward that the display is located in. We want to see if we can make any observations about speed behaviours in specific wards. The city of Toronto so is divided into 25 wards, which would be difficult to display on a single graph. As such, we will create a map plot using `ggplot2` and `sf` [@citeSF], generated from the City Wards dataset also retrieved from `opendatatoronto` (https://open.toronto.ca/dataset/city-wards/) so that we can also take advantage of being able to see larger trends in neighbouring wards.
 
+```{r average_speed_map, fig.cap="Map plots of average recorded speeds in each word separated by year"}
+# read ward data object
+wards <- readRDS(here::here("inputs/data/wards.Rds"))
 
-# Model
+# convert AREA_SHORT_CODE to numeric type, so we can join the map data with our speed data later
+wards <- wards %>% transform(AREA_SHORT_CODE = as.numeric(AREA_SHORT_CODE))
 
-\begin{equation}
-Pr(\theta | y) = \frac{Pr(y | \theta) Pr(\theta)}{Pr(y)}  (\#eq:bayes)
-\end{equation}
+# get the percentage of recorded speeds in each wards that were over 40km/h
+total_counts <- speed_counts %>%
+  group_by(ward_no, removal_date) %>%
+  summarise(total_count = sum(count))
 
-Equation \@ref(eq:bayes) seems useful, eh?
+count_over_40 <- speed_counts %>%
+  filter(speed > 40) %>%
+  group_by(ward_no, removal_date) %>%
+  summarise(count = sum(count))
 
-Here's a dumb example of how to use some references: In paper we run our analysis in `R` [@citeR]. We also use the `tidyverse` which was written by @thereferencecanbewhatever If we were interested in baseball data then @citeLahman could be useful. 
+percentage_over_40 <- total_counts %>% 
+  left_join(count_over_40) %>%
+  summarise(removal_date, percentage = (count / total_count) * 100)
 
-We can use maths by including latex between dollar signs, for instance $\theta$.
+wards <- wards %>% 
+  left_join(left_join(ward_average_speeds, percentage_over_40, 
+                      by = c('ward_no', 'removal_date')), 
+            by = c('AREA_SHORT_CODE' = 'ward_no'))
 
+ggplot(wards) + 
+  geom_sf(aes(fill = speed)) + 
+  geom_sf_label(aes(label = AREA_SHORT_CODE), label.size = 0) + 
+  scale_fill_gradient(low = 'lightblue', high = 'darkblue') +
+  theme(axis.text.x = element_blank(), axis.text.y = element_blank(),
+        axis.ticks = element_blank(), rect = element_blank(), 
+        plot.title = element_text(face = 'bold')) +
+  facet_wrap(~ removal_date) +
+  labs(title = 'Average recorded speeds by speed displays',
+       subtitle = 'Organised by year and ward*',
+       caption = '*No speed displays were used in wards 1, 2, and 16 in 2018',
+       x = '', 
+       y = '', 
+       fill = 'Average speed (km/h)')
+```
+Ward 10, Spadina-Fort York, stands out for its significantly low average recorded speed, consistently throughout all years. As previously discussed, there does appear to be a trend in increasing average speeds as distance from the downtown core increases, with a maximum average speed of 46.96 km/h recorded in 2018 in ward 22, Scarborough-Agincourt. For more elaborated analysis on the behaviour of speeding in Toronto, we 
 
-# Results
+```{r percentage_speeds_map, fig.cap="Percentage of speeds recorded by speed displays over 40km/h"}
+
+ggplot(wards) + 
+  geom_sf(aes(fill = percentage)) + 
+  geom_sf_label(aes(label = AREA_SHORT_CODE), label.size = 0) + 
+  scale_fill_gradient(low = 'grey', high = 'darkred') +
+  theme(axis.text.x = element_blank(), axis.text.y = element_blank(),
+        axis.ticks = element_blank(), rect = element_blank(), 
+        plot.title = element_text(face = 'bold')) +
+  facet_wrap(~ removal_date) +
+  labs(title = 'Percentage of recorded speeds over 40km/h by ward',
+       subtitle = 'Organised by year and ward*',
+       caption = '*No speed displays were used in wards 1, 2, and 16 in 2018',
+       x = '', 
+       y = '', 
+       fill = 'Percentage (%)')
+```
 
 # Discussion
 
@@ -96,20 +149,7 @@ If my paper were 10 pages, then should be be at least 2.5 pages. The discussion 
 
 ## Weaknesses and next steps
 
-Weaknesses and next steps should also be included.
-
 \newpage
-
-\appendix
-
-# Appendix {-}
-
-
-# Additional details
-
-
-\newpage
-
 
 # References
 
