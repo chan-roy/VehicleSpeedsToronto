@@ -1,6 +1,6 @@
 # Overview
 
-This repo is an analysis of vehicle speed observations made in the City of Toronto by mobile (temporary) speed display signage. The focuses of this paper was to determine whether speed limit compliance on residential streets in Toronto was high, and investigate overall trends in speeding behaviour in individual municipal wards. 
+This repo is an analysis of vehicle speed observations made in the City of Toronto by mobile (temporary) speed display signage, using the corresponding dataset from [Open Data Toronto](https://open.toronto.ca/dataset/mobile-watch-your-speed-program-speed-summary/). The focuses of this paper were to determine the level of speed limit compliance on residential streets in Toronto, and investigate overall trends in speeding behaviour in individual municipal wards. 
 
 It is organised as follows:
 
