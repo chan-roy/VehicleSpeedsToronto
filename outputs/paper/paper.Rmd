@@ -1,153 +1,110 @@
 ---
-title: "Speed limit compliance in Toronto is high, but speeding is prevalent outside of downtown"
-subtitle: "My subtitle if needed"
+title: "Speed limit compliance in Toronto residential streets is high, but speeding remains prevalent"
+subtitle: "Significant and consistent levels of speeding especially outside of the downtown core"
 author: 
   - Roy Chan
 thanks: "Code and data are available at: https://github.com/chan-roy/sta304_paper1"
 date: "`r format(Sys.time(), '%d %B %Y')`"
 abstract: "First sentence. Second sentence. Third sentence. Fourth sentence."
 output:
-  bookdown::pdf_document2
+  bookdown::pdf_document2:
+    extra_dependencies: ["float"]
+    includes:
+      in_header: "header_fix.tex"
 toc: FALSE
 bibliography: references.bib
 ---
-
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+# hold figures in place solution (header_fix.tex) from  https://stackoverflow.com/a/33801326
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, fig.pos = "!H")
 library(tidyverse)
+library(here)
 library(sf)
+library(kableExtra)
+options(knitr.table.format = "latex")
 ```
 
 # Introduction
+Pedestrian safety is a considerable concern for large cities such as Toronto, where population density and high number of vehicles on the road create a greater risk of traffic related fatalities and injuries. The City of Toronto's Vision Zero Plan was created to address these concerns through conducting a number of changes. One of the most significant but mutable factor in causing road fatalies and serious injuries are vehicle speeds. The risk of pedestrian death is 50% if a vehicle is travelling at 59 km/h, as opposed to 5% when travelling at 30 km/h [@citeHussain]. As a result, the city has committed to reducing vehicle speeds through several measures such as reducing speed limits and utilising automated speed enforcement.
+
+As part of the Vision Zero Road Safety Plan, the Mobile Watch Your Speed Program uses speed display signs which contain a radar device to detect the speeds of oncoming vehicles and an LED display to show the speed of the vehicle to the driver. The aim of the device is to "remind [motorists] to check their speeds and to obey speed limits" [@citeWYSP]. The location of the speed displays is limited to residential roads with no more than two lanes, and as they are temporary installations, require existing infrastructure such as hydro or light poles to be affixed to. This program is distinct from automated speed enforcement; there is no consequence if a vehicle is recorded exceeding the posted speed limit. This is a point of interest as the lack of enforcement means that drivers would not be influenced by wanting to avoid punishment to cause reducing vehicle speed, and whether publicly displaying their speed is enough of a deterrent to speeding.
 
 # Data
-## TODO ADD CITATIONS
-As part of the City of Toronto's Vision Zero Road Safety Plan, the Mobile Watch Your Speed Program uses speed display signs which contain a radar device to detect the speeds of oncoming vehicles and an LED display to show the speed of the vehicle to the driver. The aim of the device is to "remind [motorists] to check their speeds and to obey speed limits" [@citeWYSP]. The location of the speed displays is limited to residential roads with no more than two lanes, and as they are temporary installations, require existing infrastructure such as hydro or light poles to be affixed to. This program is distinct from automated speed enforcement; there is no consequence if a vehicle is recorded speeding.
+Our primary dataset is the Mobile Watch Your Speed Program - Summary [@citedataset]. The data is obtained from the Open Data Toronto portal, retrieved using the `opendatatoronto` package [@citeODT] and saved and retrieved using `readr` [@citeReadr] and `here` [@citeHere] respectively. The dataset is a summary of speeds recorded by these speed display signs over the period when it was installed and operating. It consists of 6517 rows each corresponding to an installation of the display, with columns indicating the location, period of installation, and a summary of speed observations made over the period of time it was installed. All displays are scheduled to be active on weekdays between the hours of 7 AM to 9 PM and only turns on at a minimum detected speed of 20 km/h, but speeds are still recorded by the device. For each row, we have speed distributed by percentiles, as well as the total count of vehicles recorded travelling at a specific speed in bins of 5 km/h increments from 0 km/h to 100 km/h and over. A small subset of our data is shown below, formatted using `kableExtra` [@citeKable].
 
-Our primary dataset is the Mobile Watch Your Speed Program - Summary (https://open.toronto.ca/dataset/mobile-watch-your-speed-program-speed-summary/). The data is obtained from the Open Data Toronto portal, retrieved using the `opendatatoronto` package [@citeODT]. The dataset is a summary of speeds recorded by these speed display signs over the period when it was installed and operating. It consists of 6517 rows each corresponding to an installation of the display, with columns indicating the location, period of installation, and a summary of speed observations made over the period of time it was installed. All displays are scheduled to be on only on weekdays between the hours of 7 AM to 9 PM and only turns on at a minimum detected speed of 20 km/h, but speeds are still recorded by the device. For each row, we have speed distributed by percentiles, as well as the total count of vehicles recorded travelling at a specific speed in bins of 5 km/h increments from 0 km/h to 100 km/h and over.
-
-```{r data, fig.cap="Preview of data", echo = FALSE, message = FALSE}
+```{r data-preview}
+# read in speed summary dataset
 speed_data <- read_csv(here::here("inputs/data/speed_data.csv"))
-print(as_tibble(speed_data), n = 3)
+
+speed_data[1:3, 1:11] %>% 
+  kbl(booktabs = T, caption = 'Primary dataset preview')  %>%
+  kable_styling(latex_options = c('scale_down', 'hold_position'))
+
+speed_data[1:3, 12: 30] %>% 
+  kbl(booktabs = T)  %>%
+  kable_styling(latex_options = c('scale_down', 'hold_position'))
+
+speed_data[1:3, 31:52] %>% 
+  kbl(booktabs = T)  %>%
+  kable_styling(latex_options = c('scale_down', 'hold_position'))
 ```
 
-## Data considerations and issues
-We recognise that it would be very difficult to operate on all 6000 observations, so we should devise an appropriate method of summarisation. Since the data spans over the years of 2018-2021, one way is to focus on investigating trends in vehicle speeds over the time the program is operational. Additionally, we note that it is stated the city rotates displays throughout each ward; thus we can also organise the data further by ward. We will use `dplyr` [@citedplyr] to perform our data manipulations. 
+We recognise that it would be very difficult to individually operate on all 6517 observations, so we should devise an appropriate method of summarisation. Since the data spans over the years of 2018-2021, one way is to focus on investigating trends in vehicle speeds over the time the program is operational. Additionally, it is stated the city rotates displays throughout each ward; thus we can also organise the data further by ward. For our data analysis, we will be using `R` [@citeR] and the `tidyverse` package; specifically, `dplyr` [@citedplyr] to perform our data manipulations and `ggplot2` [@citeggplot] to generate plots and figures. Since we are aggregating our data into wards, we did not utilise any of the individual data values such as information about the location or percentiles.
 
-Some issues that were discovered with the data are:
-- Inconsistent operating period. City site specifies 2-3 weeks, but some cameras have operated for multiple months if not years
-- Criteria of how locations where displays are deployed are unknown (online form for requests)
-- Speed limit of road where display is located is not specified. As stated by the city of Toronto (https://www.toronto.ca/311/knowledgebase/kb/docs/articles/transportation-services/district-transportation-services/traffic-operations/minimum-speed-limit-on-streets.html) the default speed limit is 50 km/h unless otherwise posted
-- However, the WYSP program operates on residential/local streets, so we use 40km/h as the assumed speed limit.
+Some issues that were discovered with the data are were an inconsistent operating period: City site specifies 2-3 weeks, but some cameras have operated for multiple months if not years The criteria of how locations where displays are deployed are unknown- there exists an online form for requesting the program on a specific street, but it is not made clear whether the suggestions are directly implemented or vetted further. We would think that the locations would possess some level of speed limit non-compliance if it is necessary for a speed display to be installed. Importantly for our discussion of speeding habits, the speed limit of roads where displays are located is not specified. The WYSP program operates on residential/local streets, and as stated by the city of Toronto [@citeSpeed] the speed limit on such roads is 40km/h. However, in 2015 speed limits on Toronto (downtown) and East York residential streets were further reduced to 30km/h [@citeKing]. This change occurred before the 25 ward system was introduced in 2018 so wards 4, 9, and 19 which are now considered part of this area were not previously subjected to this change [@citeAreas]. Thus we will only consider wards 10 to 14 to have the lowered speed limit of 30km/h.
 
-Some displays are located on roads which are more busy than others, so to account for this we will use relative counts. The first exploratory plot we generate, using `ggplot2` [@citeggplot], is the distribution of vehicle speeds in the entire city, grouped by year.
+Some displays are located on roads which are more busy than others, so to account for this we will use relative counts. The first exploratory plot we generate is the distribution of vehicle speeds in the entire city, grouped by year. No vehicles were recorded travelling at 0 km/h, so it has been omitted.
 
 ```{r histograms, fig.cap="Histogram of vehicle speed distributions", echo = FALSE}
-# truncate removal date to year, for grouping
-speed_data$removal_date <- str_sub(speed_data$removal_date, end = 4)
-# drop column schedule as all displays operate on same schedule
-locations <- speed_data %>% select(c('_id':removal_date, min_speed))
-speed_counts <- left_join(locations, select(speed_data, c('_id', starts_with('spd_'), -spd_00)))
+yearly_speeds <- readRDS(here::here("inputs/data/yearly_speeds.Rds"))
 
-# convert speed_counts to long format 
-speed_counts <- speed_counts %>% gather("speed", "count", starts_with('spd_')) %>% 
-  mutate(speed = str_remove_all(speed, "spd_")) %>%
-  mutate(speed = str_remove_all(speed, "_.*")) %>%
-  transform(speed = as.numeric(speed)) %>%
-  group_by(ward_no, speed, removal_date) %>% 
-  summarise(count = sum(count)) %>%
-  ungroup()
-
-speed_yearly <- speed_counts %>% 
-  group_by(removal_date, speed) %>% 
-  summarise(count = sum(count)) %>% 
-  summarise(speed, density = count / sum(count))
-
-ward_average_speeds <- speed_counts %>% 
-  group_by(ward_no,removal_date) %>% 
-  summarise(speed = (sum(speed * count) / sum(count)))
-
-ggplot(speed_yearly, aes(x = speed, y = density, color = removal_date)) + 
+ggplot(yearly_speeds, aes(x = speed, y = density, color = removal_date)) + 
   geom_freqpoly(stat = 'identity', position = 'identity') +
   scale_x_continuous(breaks = seq(5, 100, 5)) +
   labs(title = 'Vehicle speed observations by year', x = 'Recorded speed (km/h)', y = 'Density', color = 'Year') +
   theme(text = element_text(size = 10), plot.title = element_text(face = 'bold'), legend.key.size = unit(0.25, 'cm'))
 ```
 
-Some immediate observations that we can make from this histogram are that it is right-skewed, which indicates a trend of speed limit compliance with our assumption that the speed limit is 40 km/h. It is also very consistent from year to year, so there does not appear to be any significant changes in driving behaviour. One feature of our dataset is that it contains information about the municipal ward that the display is located in. We want to see if we can make any observations about speed behaviours in specific wards. The city of Toronto so is divided into 25 wards, which would be difficult to display on a single graph. As such, we will create a map plot using `ggplot2` and `sf` [@citeSF], generated from the City Wards dataset also retrieved from `opendatatoronto` (https://open.toronto.ca/dataset/city-wards/) so that we can also take advantage of being able to see larger trends in neighbouring wards.
+Some immediate observations that we can make from this histogram are that it is right-skewed, which indicates a trend of speed limit compliance with our assumption that the speed limit is 40 km/h. It is also very consistent from year to year, so there does not appear to be any significant changes in driving behaviour. One feature of our dataset is that it contains information about the municipal ward that the display is located in. We want to see if we can make any observations about speed behaviours in specific wards. The city of Toronto so is divided into 25 wards, which would be difficult to display on a single graph. As such, we will create a map plot using `ggplot2` and `sf` [@citeSF], generated from the City Wards dataset also retrieved from `opendatatoronto` [@citeWards] so that we can also take advantage of being able to see larger trends in neighbouring wards.
 
-```{r average_speed_map, fig.cap="Map plots of average recorded speeds in each word separated by year"}
-# read ward data object
-wards <- readRDS(here::here("inputs/data/wards.Rds"))
-
-# convert AREA_SHORT_CODE to numeric type, so we can join the map data with our speed data later
-wards <- wards %>% transform(AREA_SHORT_CODE = as.numeric(AREA_SHORT_CODE))
-
-# get the percentage of recorded speeds in each wards that were over 40km/h
-total_counts <- speed_counts %>%
-  group_by(ward_no, removal_date) %>%
-  summarise(total_count = sum(count))
-
-count_over_40 <- speed_counts %>%
-  filter(speed > 40) %>%
-  group_by(ward_no, removal_date) %>%
-  summarise(count = sum(count))
-
-percentage_over_40 <- total_counts %>% 
-  left_join(count_over_40) %>%
-  summarise(removal_date, percentage = (count / total_count) * 100)
-
-wards <- wards %>% 
-  left_join(left_join(ward_average_speeds, percentage_over_40, 
-                      by = c('ward_no', 'removal_date')), 
-            by = c('AREA_SHORT_CODE' = 'ward_no'))
+```{r averagespeedmap, fig.cap="Map plots of average recorded speeds in each word separated by year"}
+wards <- readRDS(here::here("inputs/data/wards_speeds.Rds"))
 
 ggplot(wards) + 
   geom_sf(aes(fill = speed)) + 
-  geom_sf_label(aes(label = AREA_SHORT_CODE), label.size = 0) + 
+  geom_sf_text(aes(label = AREA_SHORT_CODE), color = 'white', size = 2) + 
   scale_fill_gradient(low = 'lightblue', high = 'darkblue') +
   theme(axis.text.x = element_blank(), axis.text.y = element_blank(),
         axis.ticks = element_blank(), rect = element_blank(), 
         plot.title = element_text(face = 'bold')) +
   facet_wrap(~ removal_date) +
-  labs(title = 'Average recorded speeds by speed displays',
-       subtitle = 'Organised by year and ward*',
+  labs(title = 'Average speeds in Toronto are compliant with the speed limit*',
        caption = '*No speed displays were used in wards 1, 2, and 16 in 2018',
        x = '', 
        y = '', 
        fill = 'Average speed (km/h)')
 ```
-Ward 10, Spadina-Fort York, stands out for its significantly low average recorded speed, consistently throughout all years. As previously discussed, there does appear to be a trend in increasing average speeds as distance from the downtown core increases, with a maximum average speed of 46.96 km/h recorded in 2018 in ward 22, Scarborough-Agincourt. For more elaborated analysis on the behaviour of speeding in Toronto, we 
 
-```{r percentage_speeds_map, fig.cap="Percentage of speeds recorded by speed displays over 40km/h"}
+Ward 10, Spadina-Fort York, stands out for its significantly low average recorded speed, falling below the posted speed of 30 km/h and consistently throughout all years. While speed limit compliance is generally high, there is a number of wards with an average exceeding the limit, with a maximum average speed of 46.96 km/h recorded in 2018 in ward 22, Scarborough-Agincourt. For more elaborated analysis on the behaviour of speeding in Toronto, we will plot the percentage of speeds recorded exceeding the speed limit, adjusting for the lower speed limit in certain wards.
 
+```{r percentagespeedsmap, fig.cap="Percentage of recorded speeds exceeding the speed limit in each ward"}
 ggplot(wards) + 
   geom_sf(aes(fill = percentage)) + 
-  geom_sf_label(aes(label = AREA_SHORT_CODE), label.size = 0) + 
+  geom_sf_text(aes(label = AREA_SHORT_CODE), color = 'white', size = 2) + 
   scale_fill_gradient(low = 'grey', high = 'darkred') +
   theme(axis.text.x = element_blank(), axis.text.y = element_blank(),
         axis.ticks = element_blank(), rect = element_blank(), 
         plot.title = element_text(face = 'bold')) +
   facet_wrap(~ removal_date) +
-  labs(title = 'Percentage of recorded speeds over 40km/h by ward',
-       subtitle = 'Organised by year and ward*',
+  labs(title = 'Significant number of vehicles recorded exceeding the speed limit*',
+       subtitle = 'Percentages remain consistently high each year',
        caption = '*No speed displays were used in wards 1, 2, and 16 in 2018',
        x = '', 
        y = '', 
        fill = 'Percentage (%)')
 ```
 
-# Discussion
-
-## First discussion point
-
-If my paper were 10 pages, then should be be at least 2.5 pages. The discussion is a chance to show off what you know and what you learnt from all this. 
-
-## Second discussion point
-
-## Third discussion point
-
-## Weaknesses and next steps
+As visualised in this plot, the number of speed observations made that exceed the corresponding speed limit of residential streets in their ward represents a significant proportion of all observations made. With the exception of 9 observations recorded in 2018, the minimum percentage of speeds recorded as exceeding the speed limit was 11.9%, with the majority falling between the 30% to 50% range. This demonstrates that although as seen on Figure \@ref(fig:averagespeedmap) average speeds are compliant, it is not an exact representation of driving behaviour as it masks a considerable number of speeding occurrences.
 
 \newpage
 
